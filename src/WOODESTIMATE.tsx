@@ -4,32 +4,17 @@ import { OrbitControls, ContactShadows, Environment, PerspectiveCamera, Text } f
 import { gsap } from 'gsap';
 import { Box, Scissors, FileText, Ruler, LayoutGrid } from 'lucide-react';
 
-// --- Animated Plywood Component ---
+// Piece Component - GSAP-a safe-ah handle panna useEffect-la null check add panniruken
 const PlywoodPiece = ({ position, args, name, isAssembled }: any) => {
   const meshRef = useRef<any>(null);
 
   useEffect(() => {
-    if (meshRef.current) {
-      if (isAssembled) {
-        // Assemble: Smoothly move to table position
-        gsap.to(meshRef.current.position, { 
-          x: position[0], 
-          y: position[1], 
-          z: position[2], 
-          duration: 1.2, 
-          ease: "power3.inOut" 
-        });
-        gsap.to(meshRef.current.rotation, { x: 0, y: 0, z: 0, duration: 1.2 });
-      } else {
-        // Explode: Spread randomly on the ground
-        gsap.to(meshRef.current.position, { 
-          x: position[0] * 3.5, 
-          y: -0.48, 
-          z: position[2] * 3.5, 
-          duration: 1, 
-          ease: "expo.out" 
-        });
-      }
+    if (!meshRef.current) return;
+    
+    if (isAssembled) {
+      gsap.to(meshRef.current.position, { x: position[0], y: position[1], z: position[2], duration: 1, ease: "power2.out" });
+    } else {
+      gsap.to(meshRef.current.position, { x: position[0] * 3, y: -0.45, z: position[2] * 3, duration: 0.8, ease: "power2.out" });
     }
   }, [isAssembled, position]);
 
@@ -37,17 +22,10 @@ const PlywoodPiece = ({ position, args, name, isAssembled }: any) => {
     <group ref={meshRef}>
       <mesh castShadow>
         <boxGeometry args={args} />
-        <meshStandardMaterial color="#b58d6d" roughness={0.7} metalness={0.1} />
+        <meshStandardMaterial color="#b58d6d" roughness={0.7} />
       </mesh>
       {!isAssembled && (
-        <Text 
-          position={[0, args[1]/2 + 0.02, 0]} 
-          rotation={[-Math.PI / 2, 0, 0]} 
-          fontSize={0.07} 
-          color="#fbbf24"
-          anchorX="center"
-          anchorY="middle"
-        >
+        <Text position={[0, args[1]/2 + 0.05, 0]} rotation={[-Math.PI/2, 0, 0]} fontSize={0.08} color="#fbbf24">
           {name}
         </Text>
       )}
@@ -59,114 +37,80 @@ const WoodEstimate = () => {
   const [dim, setDim] = useState({ w: 4, h: 2.5, d: 2, t: 0.75 });
   const [assembled, setAssembled] = useState(true);
 
-  // --- Optimized useMemo to prevent Blinking ---
-  const calculationData = useMemo(() => {
-    const thicknessMeters = dim.t * 0.0254; // Inch to Meters
-    const scale = 0.3; // Feet to 3D Units scale
-
-    const list = [
-      { name: "TOP", pos: [0, dim.h * scale, 0], args: [dim.w * scale, thicknessMeters, dim.d * scale] },
-      { name: "LEG 1", pos: [(dim.w * scale / 2) - 0.1, (dim.h * scale / 2), (dim.d * scale / 2) - 0.1], args: [0.15, dim.h * scale, 0.15] },
-      { name: "LEG 2", pos: [-(dim.w * scale / 2) + 0.1, (dim.h * scale / 2), (dim.d * scale / 2) - 0.1], args: [0.15, dim.h * scale, 0.15] },
-      { name: "LEG 3", pos: [(dim.w * scale / 2) - 0.1, (dim.h * scale / 2), -(dim.d * scale / 2) + 0.1], args: [0.15, dim.h * scale, 0.15] },
-      { name: "LEG 4", pos: [-(dim.w * scale / 2) + 0.1, (dim.h * scale / 2), -(dim.d * scale / 2) + 0.1], args: [0.15, dim.h * scale, 0.15] },
+  // Blinking-a thadukka logic and pieces-a useMemo moolama isolate pannidalaam
+  const { list, sheets, balance } = useMemo(() => {
+    const tM = dim.t * 0.0254;
+    const s = 0.3; // Scale factor
+    
+    const piecesList = [
+      { name: "TOP", pos: [0, dim.h * s, 0], args: [dim.w * s, tM, dim.d * s] },
+      { name: "LEG 1", pos: [(dim.w * s / 2) - 0.1, (dim.h * s / 2), (dim.d * s / 2) - 0.1], args: [0.15, dim.h * s, 0.15] },
+      { name: "LEG 2", pos: [-(dim.w * s / 2) + 0.1, (dim.h * s / 2), (dim.d * s / 2) - 0.1], args: [0.15, dim.h * s, 0.15] },
+      { name: "LEG 3", pos: [(dim.w * s / 2) - 0.1, (dim.h * s / 2), -(dim.d * s / 2) + 0.1], args: [0.15, dim.h * s, 0.15] },
+      { name: "LEG 4", pos: [-(dim.w * s / 2) + 0.1, (dim.h * s / 2), -(dim.d * s / 2) + 0.1], args: [0.15, dim.h * s, 0.15] },
     ];
-
-    const totalArea = (dim.w * dim.d) + (4 * 0.5 * dim.h);
-    const sheetsNeeded = Math.ceil(totalArea / 32);
-    const balance = (8 - dim.w).toFixed(2);
-
-    return { list, sheetsNeeded, balance };
-  }, [dim.w, dim.h, dim.d, dim.t]); // Only recalculate if these specific values change
+    
+    const sheetsNeeded = Math.ceil(((dim.w * dim.d) + (dim.w * dim.h * 2)) / 32);
+    return { list: piecesList, sheets: sheetsNeeded, balance: (8 - dim.w).toFixed(2) };
+  }, [dim.w, dim.h, dim.d, dim.t]);
 
   return (
-    <div className="flex h-screen bg-[#020617] text-slate-100 font-sans overflow-hidden">
-      
-      {/* LEFT SIDEBAR */}
-      <div className="w-80 bg-[#0f172a] border-r border-white/5 p-6 flex flex-col gap-8 shadow-2xl z-20">
+    <div className="flex h-screen bg-[#020617] text-white font-sans overflow-hidden">
+      {/* SIDEBAR */}
+      <div className="w-80 bg-[#0f172a] border-r border-white/5 p-6 flex flex-col gap-6 z-20 overflow-y-auto shadow-2xl">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-amber-600 rounded-lg shadow-lg">
-            <LayoutGrid size={22} className="text-white" />
-          </div>
-          <h1 className="text-xl font-black tracking-tighter">PLY-MAX <span className="text-amber-500">3D</span></h1>
+          <div className="p-2 bg-amber-600 rounded-lg"><LayoutGrid size={22} /></div>
+          <h1 className="text-xl font-black">PLY-MAX <span className="text-amber-500">3D</span></h1>
         </div>
 
         <div className="space-y-6">
-          <section className="bg-white/5 p-4 rounded-xl border border-white/5">
-            <h2 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-4 flex items-center gap-2">
-              <Ruler size={12} /> Input Dimensions (ft)
-            </h2>
-            <div className="grid grid-cols-2 gap-4">
-              {['w', 'h', 'd'].map((k) => (
-                <div key={k} className="flex flex-col">
-                  <span className="text-[10px] text-slate-400 mb-1 ml-1">{k==='w'?'Length':k==='h'?'Height':'Width'}</span>
-                  <input 
-                    type="number" 
-                    step="0.1"
-                    value={(dim as any)[k]} 
-                    onChange={(e) => setDim({...dim, [k]: parseFloat(e.target.value) || 0})}
-                    className="bg-[#020617] border border-white/10 p-2 rounded-lg text-sm font-bold focus:border-amber-500 outline-none transition-all" 
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
+          <div className="grid grid-cols-2 gap-4">
+            {['w', 'h', 'd'].map(k => (
+              <div key={k}>
+                <label className="text-[10px] text-slate-500 uppercase">{k==='w'?'L':k==='h'?'H':'W'} (ft)</label>
+                <input type="number" step="0.1" value={(dim as any)[k]} 
+                  onChange={(e) => setDim({...dim, [k]: parseFloat(e.target.value) || 0})}
+                  className="w-full bg-[#020617] border border-white/10 p-2 rounded mt-1 text-sm outline-none focus:border-amber-500" />
+              </div>
+            ))}
+          </div>
 
-          <section className="bg-amber-500/5 p-5 rounded-xl border border-amber-500/20">
-             <div className="flex justify-between items-center mb-3 text-amber-500">
-                <h3 className="text-xs font-bold uppercase tracking-tight flex items-center gap-2">
-                   <Scissors size={14}/> Cutsomation
-                </h3>
+          <div className="bg-amber-600/5 p-4 rounded-xl border border-amber-600/20">
+             <div className="flex justify-between text-xs text-slate-400 mb-2"><span>Optimization:</span> <span className="text-green-400">{balance}' bal</span></div>
+             <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-full bg-amber-500 transition-all duration-500" style={{width: `${(dim.w / 8) * 100}%`}}></div>
              </div>
-             <div className="space-y-1">
-                <p className="text-2xl font-black text-amber-500 tracking-tighter">{calculationData.balance}'</p>
-                <p className="text-[10px] text-slate-500 uppercase font-bold">Balance from 8' Sheet</p>
-             </div>
-          </section>
+          </div>
 
-          <button 
-            onClick={() => setAssembled(!assembled)}
-            className={`w-full py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${
-              assembled ? 'bg-slate-800 border border-white/10 hover:bg-slate-700' : 'bg-amber-600 shadow-xl shadow-amber-900/20 hover:bg-amber-500'
-            }`}
-          >
-            {assembled ? "Explode & Nest View" : "Assemble 3D Table"}
+          <button onClick={() => setAssembled(!assembled)} 
+            className="w-full py-4 bg-amber-600 hover:bg-amber-500 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-lg">
+            {assembled ? "Explode View" : "Assemble Table"}
           </button>
         </div>
       </div>
 
       {/* 3D VIEWPORT */}
       <div className="flex-1 relative">
-        {/* Material Badge */}
-        <div className="absolute top-8 right-8 z-10 bg-[#0f172a]/90 backdrop-blur-md p-5 rounded-2xl border border-white/5 flex gap-6 items-center shadow-2xl">
-           <div className="text-center">
-              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Sheets Req.</p>
-              <p className="text-3xl font-black text-amber-500 leading-none">{calculationData.sheetsNeeded}</p>
-           </div>
-           <div className="h-8 w-px bg-white/10"></div>
-           <button className="text-amber-500 hover:text-amber-400 transition-colors">
-              <FileText size={26} />
-           </button>
+        <div className="absolute top-8 right-8 z-10 bg-slate-900/90 p-4 rounded-2xl border border-white/5 flex gap-4 items-center">
+           <div className="text-right"><p className="text-[10px] text-slate-500 uppercase font-bold">Sheets</p><p className="text-2xl font-black text-amber-500 leading-none">{sheets}</p></div>
+           <FileText className="text-amber-600" size={24} />
         </div>
 
-        {/* 3D Canvas Area */}
+        {/* Canvas wrapper height-a fix pannitta blinking ninnudum */}
         <div className="w-full h-full">
           <Canvas shadows dpr={[1, 2]}>
             <PerspectiveCamera makeDefault position={[5, 4, 5]} fov={35} />
-            <ambientLight intensity={0.7} />
-            <spotLight position={[10, 15, 10]} angle={0.3} penumbra={1} castShadow />
+            <ambientLight intensity={0.8} />
             <Environment preset="city" />
-            
             <Suspense fallback={null}>
               <group position={[0, -0.5, 0]}>
-                {calculationData.list.map((p, i) => (
-                  <PlywoodPiece key={i} {...p} isAssembled={assembled} />
+                {list.map((p, i) => (
+                  <PlywoodPiece key={`${i}-${assembled}`} {...p} isAssembled={assembled} />
                 ))}
               </group>
-              <ContactShadows position={[0, -0.5, 0]} opacity={0.4} scale={15} blur={2.5} far={4} />
+              <ContactShadows position={[0, -0.5, 0]} opacity={0.4} scale={10} blur={2.5} far={4} />
             </Suspense>
-
-            <OrbitControls enableDamping dampingFactor={0.1} maxPolarAngle={Math.PI / 1.8} />
+            <OrbitControls enableDamping dampingFactor={0.1} />
           </Canvas>
         </div>
       </div>
