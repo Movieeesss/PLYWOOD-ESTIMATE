@@ -1,167 +1,159 @@
-import React, { useState, useRef, useEffect, Suspense } from 'react';
+import React, { useState, useRef, useEffect, Suspense, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, ContactShadows, Environment, Float, PerspectiveCamera } from '@react-three/drei';
+import { OrbitControls, ContactShadows, Environment, PerspectiveCamera, Text } from '@react-three/drei';
 import { gsap } from 'gsap';
-import { Box, Scissors, FileText, Layout } from 'lucide-react';
+import { Box, Scissors, FileText, LayoutPanelLeft, Ruler } from 'lucide-react';
 
-// Piece Component with GSAP Animation
-const TablePiece = ({ position, args, color, isAssembled }: any) => {
+const PlywoodPiece = ({ position, args, name, isAssembled }: any) => {
   const meshRef = useRef<any>(null);
 
   useEffect(() => {
     if (meshRef.current) {
       if (isAssembled) {
-        gsap.to(meshRef.current.position, {
-          x: position[0],
-          y: position[1],
-          z: position[2],
-          duration: 1.5,
-          ease: "power4.out"
-        });
+        gsap.to(meshRef.current.position, { x: position[0], y: position[1], z: position[2], duration: 1.2, ease: "back.out(1.2)" });
+        gsap.to(meshRef.current.rotation, { x: 0, y: 0, z: 0, duration: 1.2 });
       } else {
-        gsap.to(meshRef.current.position, {
-          x: position[0] * 2.5,
-          y: -0.4,
-          z: position[2] * 2.5,
-          duration: 1.2,
-          ease: "expo.out"
+        // Smoothly scatter on the floor
+        gsap.to(meshRef.current.position, { 
+          x: position[0] * 3 + (Math.random() - 0.5) * 2, 
+          y: -0.48, 
+          z: position[2] * 3 + (Math.random() - 0.5) * 2, 
+          duration: 1, 
+          ease: "power2.out" 
         });
+        gsap.to(meshRef.current.rotation, { x: 0, y: Math.random() * 0.5, z: 0, duration: 1 });
       }
     }
   }, [isAssembled, position]);
 
   return (
-    <mesh ref={meshRef} castShadow>
-      <boxGeometry args={args} />
-      <meshStandardMaterial color={color} roughness={0.4} metalness={0.1} />
-    </mesh>
+    <group ref={meshRef}>
+      <mesh castShadow>
+        <boxGeometry args={args} />
+        {[...Array(6)].map((_, i) => (
+          <meshStandardMaterial 
+            key={i} 
+            attach={`material-${i}`} 
+            color={i === 2 || i === 3 ? "#e3c1a4" : "#966f4d"} 
+            roughness={0.6}
+          />
+        ))}
+      </mesh>
+      {!isAssembled && (
+        <Text position={[0, args[1]/2 + 0.02, 0]} rotation={[-Math.PI/2, 0, 0]} fontSize={0.08} color="#fbbf24" font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfMZhrib2Bg-4.ttf">
+          {name}
+        </Text>
+      )}
+    </group>
   );
 };
 
 const WoodEstimate = () => {
   const [dim, setDim] = useState({ w: 4, h: 2.5, d: 2, t: 0.75 });
-  const [assembled, setAssembled] = useState(false);
+  const [assembled, setAssembled] = useState(true);
   
-  const thicknessMeters = dim.t * 0.0254;
+  // --- Optimized useMemo for Calculations ---
+  const calculationData = useMemo(() => {
+    const tMeters = dim.t * 0.0254; // thickness
+    const kerf = 0.01; // 1/8 inch blade loss in feet approx
+    
+    // Pieces list for 3D and Logic
+    const list = [
+      { name: `TOP (${dim.w}'x${dim.d}')`, pos: [0, dim.h * 0.3, 0], args: [dim.w * 0.3, tMeters, dim.d * 0.3] },
+      { name: "LEG A", pos: [(dim.w*0.15)-0.08, (dim.h*0.15), (dim.d*0.15)-0.08], args: [0.12, dim.h * 0.3, 0.12] },
+      { name: "LEG B", pos: [-(dim.w*0.15)+0.08, (dim.h*0.15), (dim.d*0.15)-0.08], args: [0.12, dim.h * 0.3, 0.12] },
+      { name: "LEG C", pos: [(dim.w*0.15)-0.08, (dim.h*0.15), -(dim.d*0.15)+0.1], args: [0.12, dim.h * 0.3, 0.12] },
+      { name: "LEG D", pos: [-(dim.w*0.15)+0.08, (dim.h*0.15), -(dim.d*0.15)+0.1], args: [0.12, dim.h * 0.3, 0.12] },
+    ];
 
-  // Calculation Logic
-  const getBalance = (cut: number) => {
-    const bal = 8 - cut;
-    return bal > 0 ? bal.toFixed(2) : "0.00";
-  };
+    const topArea = (dim.w + kerf) * (dim.d + kerf);
+    const legsArea = 4 * (0.5 * dim.h); // 6" legs area
+    const totalArea = topArea + legsArea;
+    const sheets = Math.ceil(totalArea / 32);
+    const balance = (8 - dim.w).toFixed(2);
 
-  // 3D Positions
-  const topPos: [number, number, number] = [0, dim.h * 0.3, 0];
-  const legH = (dim.h * 0.3) / 2;
-  const legs = [
-    { pos: [ (dim.w*0.3)/2 - 0.1, legH,  (dim.d*0.3)/2 - 0.1] },
-    { pos: [-(dim.w*0.3)/2 + 0.1, legH,  (dim.d*0.3)/2 - 0.1] },
-    { pos: [ (dim.w*0.3)/2 - 0.1, legH, -(dim.d*0.3)/2 + 0.1] },
-    { pos: [-(dim.w*0.3)/2 + 0.1, legH, -(dim.d*0.3)/2 + 0.1] },
-  ];
+    return { list, sheets, balance, progress: (dim.w / 8) * 100 };
+  }, [dim]);
 
   return (
-    <div className="flex flex-col md:flex-row w-screen h-screen bg-[#0f172a] text-slate-200 overflow-hidden">
-      
-      {/* SIDEBAR */}
-      <div className="w-full md:w-80 p-6 bg-[#1e293b] border-r border-slate-700 overflow-y-auto z-20 shadow-2xl">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="p-2 bg-blue-600 rounded-lg">
-            <Box className="text-white" size={24} />
+    <div className="flex h-screen bg-[#020617] text-slate-100 font-sans overflow-hidden">
+      <div className="w-80 bg-[#0f172a] border-r border-white/5 p-6 flex flex-col gap-6 shadow-2xl z-10">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-amber-600 rounded-lg shadow-lg">
+            <Box size={20} className="text-white" />
           </div>
-          <h1 className="text-xl font-black tracking-tighter text-white">PLY-MAX <span className="text-blue-500">3D</span></h1>
+          <h1 className="text-xl font-black tracking-tighter">PLY-MAX <span className="text-amber-500 underline uppercase text-[10px] ml-1">Optimized</span></h1>
         </div>
 
-        <div className="space-y-6">
-          <section className="space-y-4">
-            <h2 className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em]">Table Dimensions (Feet)</h2>
+        <div className="space-y-5">
+          <section className="bg-white/5 p-4 rounded-xl border border-white/5">
+            <h2 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-4 flex items-center gap-2">
+              <Ruler size={12} /> Dimensions (ft)
+            </h2>
             <div className="grid grid-cols-2 gap-3">
-              {Object.entries({ L: 'w', H: 'h', W: 'd' }).map(([label, key]) => (
-                <div key={key} className="bg-[#0f172a] p-3 rounded-lg border border-slate-700">
-                  <label className="block text-[10px] text-slate-500 uppercase font-bold mb-1">{label}</label>
-                  <input 
-                    type="number" 
-                    value={(dim as any)[key]} 
-                    onChange={(e) => setDim({...dim, [key]: Number(e.target.value)})}
-                    className="w-full bg-transparent text-white font-bold outline-none focus:text-blue-400"
-                  />
+              {['w', 'h', 'd'].map((k) => (
+                <div key={k} className="flex flex-col">
+                  <span className="text-[9px] text-slate-400 mb-1">{k==='w'?'Length':k==='h'?'Height':'Depth'}</span>
+                  <input type="number" step="0.1" value={(dim as any)[k]} 
+                    onChange={(e)=>setDim({...dim, [k]: parseFloat(e.target.value) || 0})}
+                    className="bg-[#020617] border border-white/10 p-2 rounded-lg text-sm font-bold focus:border-amber-500 outline-none" />
                 </div>
               ))}
             </div>
           </section>
 
-          <section className="bg-blue-600/10 p-5 rounded-2xl border border-blue-500/20">
-            <div className="flex items-center gap-2 mb-4 text-blue-400">
-              <Scissors size={16} />
-              <h2 className="text-xs font-bold uppercase tracking-wider">Plywood Optimization</h2>
-            </div>
-            <div className="space-y-4">
-              <div className="flex justify-between items-end">
-                <span className="text-xs text-slate-400">Cut: {dim.w}'</span>
-                <span className="text-xs text-slate-400 font-mono">Balance: <span className="text-green-400 font-bold text-sm">{getBalance(dim.w)}'</span></span>
-              </div>
-              <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden flex">
-                <div style={{ width: `${(dim.w / 8) * 100}%` }} className="h-full bg-blue-500" />
-                <div className="h-full flex-1 bg-green-500/30" />
-              </div>
-            </div>
+          <section className="bg-amber-500/5 p-4 rounded-xl border border-amber-500/20">
+             <h3 className="text-xs font-bold text-amber-500 uppercase flex items-center gap-2 mb-3"><Scissors size={14}/> Cut Logic</h3>
+             <div className="space-y-3 text-[11px]">
+                <div className="flex justify-between text-slate-400 font-medium">
+                  <span>8' Sheet Cut:</span> 
+                  <span className="text-white">{dim.w}'</span>
+                </div>
+                <div className="flex justify-between text-slate-400 font-medium">
+                  <span>Balance:</span> 
+                  <span className="text-green-400 font-mono">{calculationData.balance}' left</span>
+                </div>
+                <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                   <div className="h-full bg-amber-500 transition-all duration-700 ease-in-out" style={{width: `${calculationData.progress}%`}}></div>
+                </div>
+             </div>
           </section>
 
-          <button 
-            onClick={() => setAssembled(!assembled)}
-            className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all transform active:scale-95 ${
-              assembled ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-blue-600 text-white shadow-lg shadow-blue-900/40 hover:bg-blue-500'
-            }`}
-          >
-            {assembled ? 'Explode View' : 'Assemble Now'}
+          <button onClick={() => setAssembled(!assembled)} 
+            className={`w-full py-4 rounded-xl font-bold text-[10px] uppercase tracking-[0.2em] transition-all shadow-lg ${assembled ? 'bg-slate-800 border border-white/10' : 'bg-amber-600 shadow-amber-900/40'}`}>
+            {assembled ? "View Cutting Nest" : "Assemble Table"}
           </button>
         </div>
       </div>
 
-      {/* 3D VIEWPORT */}
-      <div className="flex-1 relative bg-[#0f172a]">
-        {/* Overlay Info */}
-        <div className="absolute top-6 right-6 z-10 flex items-center gap-4 bg-black/40 backdrop-blur-xl p-4 rounded-2xl border border-white/5">
-          <div className="text-right">
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Est. Material</p>
-            <p className="text-lg font-black text-white">{Math.ceil(((dim.w*dim.d) + (dim.w*dim.h*2) + (dim.d*dim.h*2)) / 32)} <span className="text-xs text-slate-500 font-normal">Sheets</span></p>
-          </div>
-          <div className="h-8 w-[1px] bg-white/10" />
-          <FileText className="text-blue-500" size={24} />
+      <div className="flex-1 relative">
+        <div className="absolute top-8 right-8 bg-[#0f172a]/90 backdrop-blur-md p-5 rounded-2xl border border-white/5 flex gap-6 items-center shadow-2xl z-10">
+           <div className="text-center border-r border-white/10 pr-6">
+              <p className="text-[9px] font-bold text-slate-500 uppercase mb-1">Sheets Needed</p>
+              <p className="text-3xl font-black text-amber-500 leading-none tracking-tighter">{calculationData.sheets}</p>
+           </div>
+           <button className="bg-amber-600/10 hover:bg-amber-600/20 p-3 rounded-xl transition-all">
+              <FileText className="text-amber-500" size={24} />
+           </button>
         </div>
 
-        {/* The 3D Engine */}
-        <div className="w-full h-full">
-          <Canvas shadows dpr={[1, 2]}>
-            <PerspectiveCamera makeDefault position={[5, 4, 5]} fov={35} />
-            <ambientLight intensity={0.8} />
-            <spotLight position={[10, 15, 10]} angle={0.25} penumbra={1} castShadow />
-            <Environment preset="city" />
-            
-            <Suspense fallback={null}>
-              <group position={[0, -0.5, 0]}>
-                <TablePiece 
-                  position={topPos} 
-                  args={[dim.w * 0.3, thicknessMeters, dim.d * 0.3]} 
-                  color="#d9a066" 
-                  isAssembled={assembled} 
-                />
-                {legs.map((leg, i) => (
-                  <TablePiece 
-                    key={i}
-                    position={leg.pos} 
-                    args={[0.12, dim.h * 0.3, 0.12]} 
-                    color="#8b5a2b" 
-                    isAssembled={assembled} 
-                  />
-                ))}
-              </group>
-              <ContactShadows position={[0, -0.5, 0]} opacity={0.4} scale={15} blur={2.5} far={4} />
-            </Suspense>
+        <Canvas shadows dpr={[1, 2]} gl={{ antialias: true }}>
+          <PerspectiveCamera makeDefault position={[6, 5, 6]} fov={30} />
+          <ambientLight intensity={0.5} />
+          <spotLight position={[10, 15, 10]} angle={0.2} penumbra={1} castShadow />
+          <Environment preset="city" />
+          
+          <Suspense fallback={null}>
+            <group position={[0, -0.6, 0]}>
+              {calculationData.list.map((p, i) => (
+                <PlywoodPiece key={i} {...p} isAssembled={assembled} />
+              ))}
+            </group>
+            <ContactShadows position={[0, -0.6, 0]} opacity={0.4} scale={15} blur={3} far={4.5} />
+          </Suspense>
 
-            <OrbitControls enableDamping dampingFactor={0.05} maxPolarAngle={Math.PI / 1.8} />
-          </Canvas>
-        </div>
+          <OrbitControls enableDamping dampingFactor={0.1} />
+        </Canvas>
       </div>
     </div>
   );
